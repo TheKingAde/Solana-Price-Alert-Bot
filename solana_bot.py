@@ -38,6 +38,7 @@ async def fetch_token_data_batches(conn):
             else:
                 # If no last_updated, include by default
                 filtered_addresses.append(addr)
+
         batch_size = 30
         batches = [filtered_addresses[i:i+batch_size] for i in range(0, len(filtered_addresses), batch_size)]
         for batch in batches:
