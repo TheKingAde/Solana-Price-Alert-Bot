@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 import sqlite3
 import json
+from datetime import datetime
 
 first_run = True
 
@@ -39,14 +40,18 @@ def fetch_and_display_tokens(conn):
             cursor.execute('SELECT address FROM tokens')
             existing_addresses = set(row[0] for row in cursor.fetchall())
             
-            from datetime import datetime
             for item in data2:
                 mc = item.get('marketCap')
                 if mc is not None and mc <= 100000:
                     addr = item['baseToken']['address']
                     name = item['baseToken'].get('name', '')
                     url_db = item['url']
-                    pair_created_at = item.get('pairCreatedAt')
+                    pair_created_at_raw = item.get('pairCreatedAt')
+                    if pair_created_at_raw:
+                        # Convert ms to datetime string
+                        pair_created_at = datetime.fromtimestamp(pair_created_at_raw / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        pair_created_at = None
                     price_change = item.get('priceChange')
                     price_change_str = json.dumps(price_change) if price_change is not None else None
                     price_usd = item.get('priceUsd')
