@@ -1,6 +1,8 @@
 
 import requests
 import time
+from rich.console import Console
+from rich.table import Table
 from datetime import datetime
 import sqlite3
 import json
@@ -8,12 +10,15 @@ import asyncio
 from datetime import datetime
 
 first_run = True
+alert_count = 0
+console = Console()
 
 # Telegram bot token and chat id (set your values here)
 TELEGRAM_BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
 TELEGRAM_CHAT_ID = 'YOUR_TELEGRAM_CHAT_ID'
 
 def send_telegram_alert(message):
+    global alert_count
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         'chat_id': TELEGRAM_CHAT_ID,
@@ -23,6 +28,7 @@ def send_telegram_alert(message):
     try:
         response = requests.post(url, data=payload, timeout=10)
         if response.status_code == 200:
+            alert_count += 1
             print("Telegram alert sent.")
         else:
             print(f"Failed to send Telegram alert: {response.text}")
@@ -81,9 +87,11 @@ async def fetch_token_data_batches(conn):
 
                     addr = item['baseToken']['address']
                     mc = item.get('marketCap')
+
                     if mc is not None and mc > 100000:
                         cursor.execute('DELETE FROM tokens WHERE address = ?', (addr,))
                         print(f"Deleted token {addr} from DB due to market cap {mc}")
+                        continue
 
                     # Check price change m5 > 25 or h1 > 25, move to alerted_tokens.db if so
                     price_change = item.get('priceChange', {})
@@ -187,11 +195,11 @@ def fetch_and_display_tokens(conn):
                         pair_created_at = datetime.fromtimestamp(pair_created_at_raw / 1000).strftime('%Y-%m-%d %H:%M:%S')
                     else:
                         pair_created_at = None
+
                     price_change = item.get('priceChange')
                     m5 = price_change.get('m5')
                     h1 = price_change.get('h1')
                     trigger_alert = False
-                    
                     if m5 is not None:
                         try:
                             if abs(float(m5)) > 25:
@@ -209,7 +217,6 @@ def fetch_and_display_tokens(conn):
                         # Send alert to telegram with name, address, and url
                         alert_msg = f"<b>{name}</b>\nAddress: <code>{addr}</code>\nURL: {url_db}"
                         send_telegram_alert(alert_msg)
-
                         # Fetch the full row from tokens
                         cursor.execute('SELECT * FROM tokens WHERE address = ?', (addr,))
                         row = cursor.fetchone()
@@ -232,7 +239,6 @@ def fetch_and_display_tokens(conn):
                             alerted_cursor.execute('INSERT OR IGNORE INTO tokens (address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', row)
                             alerted_conn.commit()
                             alerted_conn.close()
-
                     price_change_str = json.dumps(price_change) if price_change is not None else None
                     price_usd = item.get('priceUsd')
                     last_updated = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -240,8 +246,8 @@ def fetch_and_display_tokens(conn):
             conn.commit()
             
             # Get newly added tokens
-            cursor.execute('SELECT address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated FROM tokens WHERE address NOT IN ({})'.format(','.join('?' for _ in existing_addresses)), list(existing_addresses))
-            new_tokens = cursor.fetchall()
+            # cursor.execute('SELECT address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated FROM tokens WHERE address NOT IN ({})'.format(','.join('?' for _ in existing_addresses)), list(existing_addresses))
+            # new_tokens = cursor.fetchall()
         
         # # Display table of newly added tokens
         # if new_tokens:
@@ -289,7 +295,13 @@ if __name__ == "__main__":
         asyncio.ensure_future(fetch_token_data_batches(conn))
         while True:
             fetch_and_display_tokens(conn)
-            # all_addresses = get_all_token_addresses(conn)
+            # Display live table with alert count
+            table = Table(title="Solana Price Alert Bot - Live Telegram Alerts")
+            table.add_column("Metric", style="cyan", no_wrap=True)
+            table.add_column("Value", style="magenta")
+            table.add_row("Telegram Alerts Sent", str(alert_count))
+            console.clear()
+            console.print(table)
             time.sleep(5)  # Update every minute
     except KeyboardInterrupt:
         print("Stopping...")
