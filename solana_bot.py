@@ -187,6 +187,8 @@ def fetch_and_display_tokens(conn):
                 mc = item.get('marketCap')
                 if mc is not None and mc <= 100000:
                     addr = item['baseToken']['address']
+                    # check if token address is already in alerted_tokens.db and if it is skip with continue
+                    
                     name = item['baseToken'].get('name', '')
                     url_db = item['url']
                     pair_created_at_raw = item.get('pairCreatedAt')
@@ -195,6 +197,7 @@ def fetch_and_display_tokens(conn):
                         pair_created_at = datetime.fromtimestamp(pair_created_at_raw / 1000).strftime('%Y-%m-%d %H:%M:%S')
                     else:
                         pair_created_at = None
+
 
                     price_change = item.get('priceChange')
                     m5 = price_change.get('m5')
