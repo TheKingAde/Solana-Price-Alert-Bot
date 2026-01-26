@@ -1,11 +1,70 @@
+
 import requests
 import time
 from datetime import datetime
 import sqlite3
 import json
+import asyncio
 from datetime import datetime
 
 first_run = True
+
+def get_all_token_addresses(conn):
+    cursor = conn.cursor()
+    cursor.execute('SELECT address FROM tokens')
+    addresses = [row[0] for row in cursor.fetchall()]
+    return addresses
+
+async def fetch_token_data_batches(conn):
+    """
+    Asynchronously fetches all token addresses from the database every 5 minutes,
+    splits them into batches of 30, and sends requests to the dexscreener API for each batch.
+    """
+    while True:
+        addresses = get_all_token_addresses(conn)
+        batch_size = 30
+        batches = [addresses[i:i+batch_size] for i in range(0, len(addresses), batch_size)]
+        for batch in batches:
+            token_addresses_str = ','.join(batch)
+            url2 = f"https://api.dexscreener.com/tokens/v1/solana/{token_addresses_str}"
+            try:
+                response = requests.get(url2)
+                response.raise_for_status()
+                data = response.json()
+                # For each token, if market cap > 100000, delete from DB
+                cursor = conn.cursor()
+                for item in data:
+                    # Check if pairCreatedAt is less than 1 hour old, skip if so
+                    pair_created_at_raw = item.get('pairCreatedAt')
+                    if pair_created_at_raw:
+                        pair_created_at = datetime.fromtimestamp(pair_created_at_raw / 1000)
+                        now = datetime.now()
+                        if (now - pair_created_at).total_seconds() < 3600:
+                            continue
+
+                    addr = item['baseToken']['address']
+                    # Get last_updated from DB and skip if less than 5 mins ago
+                    cursor.execute('SELECT last_updated FROM tokens WHERE address = ?', (addr,))
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        try:
+                            last_updated_dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
+                            if (datetime.now() - last_updated_dt).total_seconds() < 300:
+                                continue
+                        except Exception as e:
+                            print(f"Error parsing last_updated for {addr}: {e}")
+
+                    mc = item.get('marketCap')
+                    if mc is not None and mc > 100000:
+                        cursor.execute('DELETE FROM tokens WHERE address = ?', (addr,))
+                        print(f"Deleted token {addr} from DB due to market cap {mc}")
+
+                conn.commit()
+                print(f"Fetched and checked data for batch: {batch}")
+            except requests.RequestException as e:
+                print(f"Error fetching batch: {batch}\n{e}")
+        print("Waiting 5 minutes before next batch fetch...")
+        await asyncio.sleep(300)
 
 def fetch_and_display_tokens(conn):
     global first_run
@@ -24,7 +83,6 @@ def fetch_and_display_tokens(conn):
         
         # Collect token addresses
         addresses = [token['tokenAddress'] for token in filtered_tokens]
-        
         new_tokens = []
         if addresses:
             # Fetch detailed data
@@ -63,25 +121,25 @@ def fetch_and_display_tokens(conn):
             cursor.execute('SELECT address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated FROM tokens WHERE address NOT IN ({})'.format(','.join('?' for _ in existing_addresses)), list(existing_addresses))
             new_tokens = cursor.fetchall()
         
-        # Display table of newly added tokens
-        if new_tokens:
-            if first_run:
-                print(f"\nLive Token Table - Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                print("-" * 240)
-                print(f"{'Token Address':<50} {'Name':<20} {'Market Cap':<15} {'URL':<60} {'PairCreatedAt':<15} {'PriceChange':<30} {'PriceUsd':<15} {'LastUpdated'}")
-                print("-" * 240)
-                first_run = False
-            for addr, name, mc, url, pair_created_at, price_change, price_usd, last_updated in new_tokens:
-                addr_str = addr[:49]
-                name_str = name[:19]
-                mc_str = str(mc)[:14]
-                url_str = url[:59]
-                pair_created_at_str = str(pair_created_at) if pair_created_at is not None else ''
-                price_change_str = price_change[:29] + '...' if price_change and len(price_change) > 32 else (price_change or '')
-                price_usd_str = price_usd if price_usd is not None else ''
-                last_updated_str = last_updated if last_updated is not None else ''
-                print(f"{addr_str:<50} {name_str:<20} {mc_str:<15} {url_str:<60} {pair_created_at_str:<15} {price_change_str:<30} {price_usd_str:<15} {last_updated_str}")
-            print("-" * 240)
+        # # Display table of newly added tokens
+        # if new_tokens:
+        #     if first_run:
+        #         print(f"\nLive Token Table - Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        #         print("-" * 240)
+        #         print(f"{'Token Address':<50} {'Name':<20} {'Market Cap':<15} {'URL':<60} {'PairCreatedAt':<15} {'PriceChange':<30} {'PriceUsd':<15} {'LastUpdated'}")
+        #         print("-" * 240)
+        #         first_run = False
+        #     for addr, name, mc, url, pair_created_at, price_change, price_usd, last_updated in new_tokens:
+        #         addr_str = addr[:49]
+        #         name_str = name[:19]
+        #         mc_str = str(mc)[:14]
+        #         url_str = url[:59]
+        #         pair_created_at_str = str(pair_created_at) if pair_created_at is not None else ''
+        #         price_change_str = price_change[:29] + '...' if price_change and len(price_change) > 32 else (price_change or '')
+        #         price_usd_str = price_usd if price_usd is not None else ''
+        #         last_updated_str = last_updated if last_updated is not None else ''
+        #         print(f"{addr_str:<50} {name_str:<20} {mc_str:<15} {url_str:<60} {pair_created_at_str:<15} {price_change_str:<30} {price_usd_str:<15} {last_updated_str}")
+        #     print("-" * 240)
         
     except requests.RequestException as e:
         print(f"Error fetching data: {e}")
@@ -104,8 +162,12 @@ if __name__ == "__main__":
     
     # Run in a loop for live updates
     try:
+        # Start the async batch fetcher in the background
+        loop = asyncio.get_event_loop()
+        asyncio.ensure_future(fetch_token_data_batches(conn))
         while True:
             fetch_and_display_tokens(conn)
+            # all_addresses = get_all_token_addresses(conn)
             time.sleep(5)  # Update every minute
     except KeyboardInterrupt:
         print("Stopping...")
