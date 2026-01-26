@@ -143,7 +143,7 @@ async def fetch_token_data_batches(conn):
                             alerted_conn.close()
                             # Remove from main tokens db
                             cursor.execute('DELETE FROM tokens WHERE address = ?', (addr,))
-                            print(f"Moved token {addr} to alerted_tokens.db due to price change alert (m5: {m5}, h1: {h1})")
+                            print(f"Moved token {addr} to alerted_tokens.db due to price change alert")
                 conn.commit()
                 print(f"Fetched and checked data for batch: {batch}")
             except requests.RequestException as e:
@@ -239,6 +239,10 @@ def fetch_and_display_tokens(conn):
                             alerted_cursor.execute('INSERT OR IGNORE INTO tokens (address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', row)
                             alerted_conn.commit()
                             alerted_conn.close()
+                            # Remove from main tokens db
+                            cursor.execute('DELETE FROM tokens WHERE address = ?', (addr,))
+                            print(f"Moved token {addr} to alerted_tokens.db due to price change alert")
+                            
                     price_change_str = json.dumps(price_change) if price_change is not None else None
                     price_usd = item.get('priceUsd')
                     last_updated = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
