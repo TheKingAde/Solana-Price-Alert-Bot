@@ -13,6 +13,17 @@ first_run = True
 alert_count = 0
 console = Console()
 
+# Minimal log capture for print messages and errors
+from collections import deque
+log_messages = deque(maxlen=30)
+import builtins
+_original_print = print
+def log_print(*args, **kwargs):
+    msg = ' '.join(str(a) for a in args)
+    log_messages.append(msg)
+    _original_print(*args, **kwargs)
+builtins.print = log_print
+
 # Telegram bot token and chat id (set your values here)
 TELEGRAM_BOT_TOKEN = '8249556434:AAHAfPZWQpk7BHPx_olnG33H0VlBDXxdhKs'
 TELEGRAM_CHAT_ID = '6126141848'
@@ -119,13 +130,13 @@ async def fetch_token_data_batches(conn):
 
                     if m5 is not None:
                         try:
-                            if abs(float(m5)) > 25:
+                            if float(m5) > 25:
                                 trigger_alert = True
                         except Exception:
                             pass
                     elif h1 is not None:
                         try:
-                            if abs(float(h1)) > 25:
+                            if float(h1) > 25:
                                 trigger_alert = True
                         except Exception:
                             pass
@@ -167,7 +178,7 @@ async def fetch_token_data_batches(conn):
             except requests.RequestException as e:
                 print(f"Error fetching batch: {batch}\n{e}")
         print("Waiting 5 minutes before next batch fetch...")
-        await asyncio.sleep(300)
+        await asyncio.sleep(60)
 
 def fetch_and_display_tokens(conn):
     global first_run
@@ -235,52 +246,6 @@ def fetch_and_display_tokens(conn):
                         pair_created_at = None
 
                     price_change = item.get('priceChange')
-                    m5 = price_change.get('m5')
-                    h1 = price_change.get('h1')
-                    trigger_alert = False
-                    if m5 is not None:
-                        try:
-                            if float(m5) > 25:
-                                trigger_alert = True
-                        except Exception:
-                            pass
-                    elif h1 is not None:
-                        try:
-                            if float(h1) > 25:
-                                trigger_alert = True
-                        except Exception:
-                            pass
-
-                    if trigger_alert:
-                        # Send alert to telegram with name, address, and url
-                        alert_msg = f"<b>{name}</b>\nAddress: <code>{addr}</code>\nURL: {url_db}"
-                        send_telegram_alert(alert_msg)
-                        # Fetch the full row from tokens
-                        cursor.execute('SELECT * FROM tokens WHERE address = ?', (addr,))
-                        row = cursor.fetchone()
-                        if row:
-                            # Open alerted_tokens.db and ensure schema
-                            alerted_conn = sqlite3.connect('alerted_tokens.db')
-                            alerted_cursor = alerted_conn.cursor()
-                            alerted_cursor.execute('''CREATE TABLE IF NOT EXISTS tokens (
-                                address TEXT PRIMARY KEY,
-                                name TEXT,
-                                market_cap REAL,
-                                url TEXT,
-                                pair_created_at INTEGER,
-                                price_change TEXT,
-                                price_usd TEXT,
-                                last_updated TEXT
-                            )''')
-                            alerted_conn.commit()
-                            # Insert into alerted_tokens.db
-                            alerted_cursor.execute('INSERT OR IGNORE INTO tokens (address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', row)
-                            alerted_conn.commit()
-                            alerted_conn.close()
-                            # Remove from main tokens db
-                            cursor.execute('DELETE FROM tokens WHERE address = ?', (addr,))
-                            print(f"Moved token {addr} to alerted_tokens.db due to price change alert")
-
                     price_change_str = json.dumps(price_change) if price_change is not None else None
                     price_usd = item.get('priceUsd')
                     last_updated = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -338,12 +303,20 @@ if __name__ == "__main__":
         while True:
             fetch_and_display_tokens(conn)
             # Display live table with alert count
-            table = Table(title="Solana Price Alert Bot - Live Telegram Alerts")
+            table = Table(title="Solana Price Alert Telegram Bot")
             table.add_column("Metric", style="cyan", no_wrap=True)
             table.add_column("Value", style="magenta")
             table.add_row("Telegram Alerts Sent", str(alert_count))
+
+            # Live table for logs/errors
+            log_table = Table(title="Bot Logs")
+            log_table.add_column("Message", style="yellow")
+            for msg in list(log_messages):
+                log_table.add_row(msg)
+
             console.clear()
             console.print(table)
+            console.print(log_table)
             time.sleep(5)  # Update every minute
     except KeyboardInterrupt:
         print("Stopping...")
