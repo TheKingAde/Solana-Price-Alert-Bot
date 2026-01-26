@@ -9,6 +9,26 @@ from datetime import datetime
 
 first_run = True
 
+# Telegram bot token and chat id (set your values here)
+TELEGRAM_BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
+TELEGRAM_CHAT_ID = 'YOUR_TELEGRAM_CHAT_ID'
+
+def send_telegram_alert(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        'chat_id': TELEGRAM_CHAT_ID,
+        'text': message,
+        'parse_mode': 'HTML'
+    }
+    try:
+        response = requests.post(url, data=payload, timeout=10)
+        if response.status_code == 200:
+            print("Telegram alert sent.")
+        else:
+            print(f"Failed to send Telegram alert: {response.text}")
+    except Exception as e:
+        print(f"Error sending Telegram alert: {e}")
+
 def get_all_token_addresses(conn):
     cursor = conn.cursor()
     cursor.execute('SELECT address FROM tokens')
@@ -83,7 +103,14 @@ async def fetch_token_data_batches(conn):
                         except Exception:
                             pass
 
+
                     if trigger_alert:
+                        # Send alert to telegram with name, address, and url
+                        name = item['baseToken'].get('name', 'Unknown')
+                        url = item.get('url', '')
+                        alert_msg = f"<b>{name}</b>\nAddress: <code>{addr}</code>\nURL: {url}"
+                        send_telegram_alert(alert_msg)
+
                         # Fetch the full row from tokens
                         cursor.execute('SELECT * FROM tokens WHERE address = ?', (addr,))
                         row = cursor.fetchone()
