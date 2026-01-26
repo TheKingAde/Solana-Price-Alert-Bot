@@ -86,10 +86,22 @@ async def fetch_token_data_batches(conn):
                             continue
 
                     addr = item['baseToken']['address']
-                    with sqlite3.connect('alerted_tokens.db') as alerted_conn:
-                        alerted_cursor = alerted_conn.cursor()
-                        alerted_cursor.execute('SELECT 1 FROM tokens WHERE address = ?', (addr,))
-                        already_alerted = alerted_cursor.fetchone()
+                    alerted_conn = sqlite3.connect('alerted_tokens.db')
+                    alerted_cursor = alerted_conn.cursor()
+                    alerted_cursor.execute('''CREATE TABLE IF NOT EXISTS tokens (
+                        address TEXT PRIMARY KEY,
+                        name TEXT,
+                        market_cap REAL,
+                        url TEXT,
+                        pair_created_at INTEGER,
+                        price_change TEXT,
+                        price_usd TEXT,
+                        last_updated TEXT
+                    )''')
+                    alerted_conn.commit()
+                    alerted_cursor.execute('SELECT 1 FROM tokens WHERE address = ?', (addr,))
+                    already_alerted = alerted_cursor.fetchone()
+                    alerted_conn.close()
                     if already_alerted:
                         continue
                     
@@ -194,10 +206,22 @@ def fetch_and_display_tokens(conn):
                 if mc is not None and mc <= 100000:
                     addr = item['baseToken']['address']
                     # Check if token address is already in alerted_tokens.db and if it is, skip
-                    with sqlite3.connect('alerted_tokens.db') as alerted_conn:
-                        alerted_cursor = alerted_conn.cursor()
-                        alerted_cursor.execute('SELECT 1 FROM tokens WHERE address = ?', (addr,))
-                        already_alerted = alerted_cursor.fetchone()
+                    alerted_conn = sqlite3.connect('alerted_tokens.db')
+                    alerted_cursor = alerted_conn.cursor()
+                    alerted_cursor.execute('''CREATE TABLE IF NOT EXISTS tokens (
+                        address TEXT PRIMARY KEY,
+                        name TEXT,
+                        market_cap REAL,
+                        url TEXT,
+                        pair_created_at INTEGER,
+                        price_change TEXT,
+                        price_usd TEXT,
+                        last_updated TEXT
+                    )''')
+                    alerted_conn.commit()
+                    alerted_cursor.execute('SELECT 1 FROM tokens WHERE address = ?', (addr,))
+                    already_alerted = alerted_cursor.fetchone()
+                    alerted_conn.close()
                     if already_alerted:
                         continue
 
