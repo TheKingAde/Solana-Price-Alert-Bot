@@ -90,6 +90,7 @@ async def fetch_token_data_batches(conn):
                     m5 = price_change.get('m5')
                     h1 = price_change.get('h1')
                     trigger_alert = False
+
                     if m5 is not None:
                         try:
                             if abs(float(m5)) > 25:
@@ -102,7 +103,6 @@ async def fetch_token_data_batches(conn):
                                 trigger_alert = True
                         except Exception:
                             pass
-
 
                     if trigger_alert:
                         # Send alert to telegram with name, address, and url
@@ -188,6 +188,51 @@ def fetch_and_display_tokens(conn):
                     else:
                         pair_created_at = None
                     price_change = item.get('priceChange')
+                    m5 = price_change.get('m5')
+                    h1 = price_change.get('h1')
+                    trigger_alert = False
+                    
+                    if m5 is not None:
+                        try:
+                            if abs(float(m5)) > 25:
+                                trigger_alert = True
+                        except Exception:
+                            pass
+                    elif h1 is not None:
+                        try:
+                            if abs(float(h1)) > 25:
+                                trigger_alert = True
+                        except Exception:
+                            pass
+
+                    if trigger_alert:
+                        # Send alert to telegram with name, address, and url
+                        alert_msg = f"<b>{name}</b>\nAddress: <code>{addr}</code>\nURL: {url_db}"
+                        send_telegram_alert(alert_msg)
+
+                        # Fetch the full row from tokens
+                        cursor.execute('SELECT * FROM tokens WHERE address = ?', (addr,))
+                        row = cursor.fetchone()
+                        if row:
+                            # Open alerted_tokens.db and ensure schema
+                            alerted_conn = sqlite3.connect('alerted_tokens.db')
+                            alerted_cursor = alerted_conn.cursor()
+                            alerted_cursor.execute('''CREATE TABLE IF NOT EXISTS tokens (
+                                address TEXT PRIMARY KEY,
+                                name TEXT,
+                                market_cap REAL,
+                                url TEXT,
+                                pair_created_at INTEGER,
+                                price_change TEXT,
+                                price_usd TEXT,
+                                last_updated TEXT
+                            )''')
+                            alerted_conn.commit()
+                            # Insert into alerted_tokens.db
+                            alerted_cursor.execute('INSERT OR IGNORE INTO tokens (address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', row)
+                            alerted_conn.commit()
+                            alerted_conn.close()
+
                     price_change_str = json.dumps(price_change) if price_change is not None else None
                     price_usd = item.get('priceUsd')
                     last_updated = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
