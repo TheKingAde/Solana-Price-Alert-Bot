@@ -14,8 +14,8 @@ alert_count = 0
 console = Console()
 
 # Telegram bot token and chat id (set your values here)
-TELEGRAM_BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
-TELEGRAM_CHAT_ID = 'YOUR_TELEGRAM_CHAT_ID'
+TELEGRAM_BOT_TOKEN = '8249556434:AAHAfPZWQpk7BHPx_olnG33H0VlBDXxdhKs'
+TELEGRAM_CHAT_ID = '6126141848'
 
 def send_telegram_alert(message):
     global alert_count
@@ -181,7 +181,7 @@ def fetch_and_display_tokens(conn):
             cursor = conn.cursor()
             # Get existing addresses before insert
             cursor.execute('SELECT address FROM tokens')
-            existing_addresses = set(row[0] for row in cursor.fetchall())
+            # existing_addresses = set(row[0] for row in cursor.fetchall())
             
             for item in data2:
                 mc = item.get('marketCap')
