@@ -21,9 +21,25 @@ async def fetch_token_data_batches(conn):
     splits them into batches of 30, and sends requests to the dexscreener API for each batch.
     """
     while True:
+        # Filter addresses by last_updated > 5 minutes ago
+        cursor = conn.cursor()
         addresses = get_all_token_addresses(conn)
+        filtered_addresses = []
+        for addr in addresses:
+            cursor.execute('SELECT last_updated FROM tokens WHERE address = ?', (addr,))
+            result = cursor.fetchone()
+            if result and result[0]:
+                try:
+                    last_updated_dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
+                    if (datetime.now() - last_updated_dt).total_seconds() > 300:
+                        filtered_addresses.append(addr)
+                except Exception as e:
+                    print(f"Error parsing last_updated for {addr}: {e}")
+            else:
+                # If no last_updated, include by default
+                filtered_addresses.append(addr)
         batch_size = 30
-        batches = [addresses[i:i+batch_size] for i in range(0, len(addresses), batch_size)]
+        batches = [filtered_addresses[i:i+batch_size] for i in range(0, len(filtered_addresses), batch_size)]
         for batch in batches:
             token_addresses_str = ','.join(batch)
             url2 = f"https://api.dexscreener.com/tokens/v1/solana/{token_addresses_str}"
@@ -43,17 +59,6 @@ async def fetch_token_data_batches(conn):
                             continue
 
                     addr = item['baseToken']['address']
-                    # Get last_updated from DB and skip if less than 5 mins ago
-                    cursor.execute('SELECT last_updated FROM tokens WHERE address = ?', (addr,))
-                    result = cursor.fetchone()
-                    if result and result[0]:
-                        try:
-                            last_updated_dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
-                            if (datetime.now() - last_updated_dt).total_seconds() < 300:
-                                continue
-                        except Exception as e:
-                            print(f"Error parsing last_updated for {addr}: {e}")
-
                     mc = item.get('marketCap')
                     if mc is not None and mc > 100000:
                         cursor.execute('DELETE FROM tokens WHERE address = ?', (addr,))
