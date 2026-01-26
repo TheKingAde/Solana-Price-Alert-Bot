@@ -6,7 +6,6 @@ from rich.table import Table
 from datetime import datetime
 import sqlite3
 import json
-import asyncio
 from datetime import datetime
 
 first_run = True
