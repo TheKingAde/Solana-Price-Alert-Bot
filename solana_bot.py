@@ -2,6 +2,7 @@ import requests
 import time
 from datetime import datetime
 import sqlite3
+import json
 
 first_run = True
 
@@ -38,35 +39,44 @@ def fetch_and_display_tokens(conn):
             cursor.execute('SELECT address FROM tokens')
             existing_addresses = set(row[0] for row in cursor.fetchall())
             
+            from datetime import datetime
             for item in data2:
                 mc = item.get('marketCap')
                 if mc is not None and mc <= 100000:
                     addr = item['baseToken']['address']
                     name = item['baseToken'].get('name', '')
                     url_db = item['url']
-                    cursor.execute('INSERT OR IGNORE INTO tokens (address, name, market_cap, url) VALUES (?, ?, ?, ?)', (addr, name, mc, url_db))
+                    pair_created_at = item.get('pairCreatedAt')
+                    price_change = item.get('priceChange')
+                    price_change_str = json.dumps(price_change) if price_change is not None else None
+                    price_usd = item.get('priceUsd')
+                    last_updated = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    cursor.execute('INSERT OR IGNORE INTO tokens (address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (addr, name, mc, url_db, pair_created_at, price_change_str, price_usd, last_updated))
             conn.commit()
             
             # Get newly added tokens
-            cursor.execute('SELECT address, name, market_cap, url FROM tokens WHERE address NOT IN ({})'.format(','.join('?' for _ in existing_addresses)), list(existing_addresses))
+            cursor.execute('SELECT address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated FROM tokens WHERE address NOT IN ({})'.format(','.join('?' for _ in existing_addresses)), list(existing_addresses))
             new_tokens = cursor.fetchall()
         
         # Display table of newly added tokens
         if new_tokens:
             if first_run:
                 print(f"\nLive Token Table - Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                print("-" * 140)
-                print(f"{'Token Address':<50} {'Name':<20} {'Market Cap':<15} {'URL'}")
-                print("-" * 140)
+                print("-" * 240)
+                print(f"{'Token Address':<50} {'Name':<20} {'Market Cap':<15} {'URL':<60} {'PairCreatedAt':<15} {'PriceChange':<30} {'PriceUsd':<15} {'LastUpdated'}")
+                print("-" * 240)
                 first_run = False
-            
-            for addr, name, mc, url in new_tokens:
+            for addr, name, mc, url, pair_created_at, price_change, price_usd, last_updated in new_tokens:
                 addr_str = addr[:49]
                 name_str = name[:19]
                 mc_str = str(mc)[:14]
-                url_str = url
-                print(f"{addr_str:<50} {name_str:<20} {mc_str:<15} {url_str}")
-            print("-" * 140)
+                url_str = url[:59]
+                pair_created_at_str = str(pair_created_at) if pair_created_at is not None else ''
+                price_change_str = price_change[:29] + '...' if price_change and len(price_change) > 32 else (price_change or '')
+                price_usd_str = price_usd if price_usd is not None else ''
+                last_updated_str = last_updated if last_updated is not None else ''
+                print(f"{addr_str:<50} {name_str:<20} {mc_str:<15} {url_str:<60} {pair_created_at_str:<15} {price_change_str:<30} {price_usd_str:<15} {last_updated_str}")
+            print("-" * 240)
         
     except requests.RequestException as e:
         print(f"Error fetching data: {e}")
@@ -79,7 +89,11 @@ if __name__ == "__main__":
         address TEXT PRIMARY KEY,
         name TEXT,
         market_cap REAL,
-        url TEXT
+        url TEXT,
+        pair_created_at INTEGER,
+        price_change TEXT,
+        price_usd TEXT,
+        last_updated TEXT
     )''')
     conn.commit()
     
