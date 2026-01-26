@@ -14,19 +14,21 @@ alert_count = 0
 console = Console()
 
 # Minimal log capture for print messages and errors
-from collections import deque
-log_messages = deque(maxlen=30)
 import builtins
-_original_print = print
+from collections import deque
+import traceback
+
+log_messages = deque(maxlen=100)
+
 def log_print(*args, **kwargs):
-    msg = ' '.join(str(a) for a in args)
+    msg = " ".join(str(a) for a in args)
     log_messages.append(msg)
-    _original_print(*args, **kwargs)
+
 builtins.print = log_print
 
 # Telegram bot token and chat id (set your values here)
-TELEGRAM_BOT_TOKEN = '8249556434:AAHAfPZWQpk7BHPx_olnG33H0VlBDXxdhKs'
-TELEGRAM_CHAT_ID = '6126141848'
+TELEGRAM_BOT_TOKEN = '8449427476:AAGIZQznX-qelHXA78H2Hk_WtKVbHzlIdyg'
+TELEGRAM_CHAT_ID = '5262055351'
 
 def send_telegram_alert(message):
     global alert_count
@@ -177,7 +179,6 @@ def fetch_token_data_batches(conn):
         except requests.RequestException as e:
             print(f"Error fetching batch: {batch}\n{e}")
     print("Waiting 5 minutes before next batch fetch...")
-    time.sleep(60)
 
 def fetch_and_display_tokens(conn):
     global first_run
