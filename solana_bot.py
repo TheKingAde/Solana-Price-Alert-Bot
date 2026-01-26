@@ -202,13 +202,13 @@ def fetch_and_display_tokens(conn):
                     trigger_alert = False
                     if m5 is not None:
                         try:
-                            if abs(float(m5)) > 25:
+                            if float(m5) > 25:
                                 trigger_alert = True
                         except Exception:
                             pass
                     elif h1 is not None:
                         try:
-                            if abs(float(h1)) > 25:
+                            if float(h1) > 25:
                                 trigger_alert = True
                         except Exception:
                             pass
