@@ -86,8 +86,14 @@ async def fetch_token_data_batches(conn):
                             continue
 
                     addr = item['baseToken']['address']
+                    with sqlite3.connect('alerted_tokens.db') as alerted_conn:
+                        alerted_cursor = alerted_conn.cursor()
+                        alerted_cursor.execute('SELECT 1 FROM tokens WHERE address = ?', (addr,))
+                        already_alerted = alerted_cursor.fetchone()
+                    if already_alerted:
+                        continue
+                    
                     mc = item.get('marketCap')
-
                     if mc is not None and mc > 100000:
                         cursor.execute('DELETE FROM tokens WHERE address = ?', (addr,))
                         print(f"Deleted token {addr} from DB due to market cap {mc}")
@@ -187,8 +193,14 @@ def fetch_and_display_tokens(conn):
                 mc = item.get('marketCap')
                 if mc is not None and mc <= 100000:
                     addr = item['baseToken']['address']
-                    # check if token address is already in alerted_tokens.db and if it is skip with continue
-                    
+                    # Check if token address is already in alerted_tokens.db and if it is, skip
+                    with sqlite3.connect('alerted_tokens.db') as alerted_conn:
+                        alerted_cursor = alerted_conn.cursor()
+                        alerted_cursor.execute('SELECT 1 FROM tokens WHERE address = ?', (addr,))
+                        already_alerted = alerted_cursor.fetchone()
+                    if already_alerted:
+                        continue
+
                     name = item['baseToken'].get('name', '')
                     url_db = item['url']
                     pair_created_at_raw = item.get('pairCreatedAt')
@@ -197,7 +209,6 @@ def fetch_and_display_tokens(conn):
                         pair_created_at = datetime.fromtimestamp(pair_created_at_raw / 1000).strftime('%Y-%m-%d %H:%M:%S')
                     else:
                         pair_created_at = None
-
 
                     price_change = item.get('priceChange')
                     m5 = price_change.get('m5')
@@ -245,7 +256,7 @@ def fetch_and_display_tokens(conn):
                             # Remove from main tokens db
                             cursor.execute('DELETE FROM tokens WHERE address = ?', (addr,))
                             print(f"Moved token {addr} to alerted_tokens.db due to price change alert")
-                            
+
                     price_change_str = json.dumps(price_change) if price_change is not None else None
                     price_usd = item.get('priceUsd')
                     last_updated = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
