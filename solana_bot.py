@@ -154,7 +154,7 @@ def fetch_token_data_batches(conn):
                         f"🚨 <b>Name: {name}</b>\n"
                         f"━━━━━━━━━━━━━━━━━━\n"
                         f"📍 <b>Address:</b>\n"
-                        f"<code>{addr}</code>\n\n"
+                        f"<code>{addr}</code>\n"
                     )
 
                     # ---- description ----
