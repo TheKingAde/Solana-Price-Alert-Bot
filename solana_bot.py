@@ -154,8 +154,6 @@ def fetch_token_data_batches(conn):
                         f"━━━━━━━━━━━━━━━━━━\n"
                         f"📍 <b>Address:</b>\n"
                         f"<code>{addr}</code>\n\n"
-                        f"🔗 <b>DexScreener:</b>\n"
-                        f"<a href='{url}'>View Chart</a>"
                     )
 
                     # ---- description ----
@@ -205,7 +203,7 @@ def fetch_token_data_batches(conn):
                         if twitter_link else
                         "\n🐦 <i>X link is not available</i>"
                     )
-
+                    alert_msg += f"\n🔗 <a href='{url}'>Dexscreener</a>"
                     alert_msg += f"\n🪐 <a href='{jupiter_url}'>Jupiter</a>"
                     send_telegram_alert(alert_msg)
 
