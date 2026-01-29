@@ -148,6 +148,7 @@ def fetch_token_data_batches(conn):
                     # Send alert to telegram with name, address, and url
                     name = item['baseToken'].get('name', 'Unknown')
                     url = item.get('url', '')
+                    jupiter_url = f"https://jup.ag/tokens/{addr}"
 
                     alert_msg = (
                         f"🚨 <b>Name: {name}</b>\n"
@@ -161,7 +162,6 @@ def fetch_token_data_batches(conn):
                         'SELECT description FROM tokens WHERE address = ?', 
                         (addr,)
                     ).fetchone()
-
                     if description and description[0]:
                         alert_msg += f"\n\n📝 <b>Description</b>\n{description[0]}"
                     else:
@@ -170,7 +170,6 @@ def fetch_token_data_batches(conn):
                     # ---- links ----
                     website_link = None
                     twitter_link = None
-
                     links_row = cursor.execute(
                         'SELECT links FROM tokens WHERE address = ?', 
                         (addr,)
@@ -187,24 +186,20 @@ def fetch_token_data_batches(conn):
                         except json.JSONDecodeError:
                             pass
 
-                    # ---- Jupiter ----
-                    jupiter_url = f"https://jup.ag/tokens/{addr}"
-
                     # ---- append links ----
                     alert_msg += "\n\n🔗 <b>Links</b>"
+                    alert_msg += f"\n🔗 <a href='{url}'>Dexscreener</a>"
+                    alert_msg += f"\n🪐 <a href='{jupiter_url}'>Jupiter</a>"
                     alert_msg += (
                         f"\n🌐 <a href='{website_link}'>Website</a>"
                         if website_link else
                         "\n🌐 <i>Website is not available</i>"
                     )
-
                     alert_msg += (
                         f"\n🐦 <a href='{twitter_link}'>X</a>"
                         if twitter_link else
                         "\n🐦 <i>X link is not available</i>"
                     )
-                    alert_msg += f"\n🔗 <a href='{url}'>Dexscreener</a>"
-                    alert_msg += f"\n🪐 <a href='{jupiter_url}'>Jupiter</a>"
                     send_telegram_alert(alert_msg)
 
                     # Fetch the full row from tokens
