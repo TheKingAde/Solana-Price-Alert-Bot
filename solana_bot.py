@@ -197,7 +197,7 @@ def fetch_token_data_batches(conn):
                     alert_msg += (
                         f"\n🌐 <a href='{website_link}'>Website</a>"
                         if website_link else
-                        "\n🌐 <b>Website:</b> <i>Website is not available</i>"
+                        "\n🌐 <i>Website is not available</i>"
                     )
 
                     alert_msg += (
@@ -207,9 +207,7 @@ def fetch_token_data_batches(conn):
                     )
 
                     alert_msg += f"\n🪐 <a href='{jupiter_url}'>Jupiter</a>"
-
                     send_telegram_alert(alert_msg)
-
 
                     # Fetch the full row from tokens
                     cursor.execute('SELECT * FROM tokens WHERE address = ?', (addr,))
