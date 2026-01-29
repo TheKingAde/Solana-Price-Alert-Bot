@@ -26,8 +26,8 @@ def log_print(*args, **kwargs):
 builtins.print = log_print
 
 # Telegram bot token and chat id (set your values here)
-TELEGRAM_BOT_TOKEN = '8449427476:AAGIZQznX-qelHXA78H2Hk_WtKVbHzlIdyg'
-TELEGRAM_CHAT_ID = '5262055351'
+TELEGRAM_BOT_TOKEN = '8249556434:AAHAfPZWQpk7BHPx_olnG33H0VlBDXxdhKs'
+TELEGRAM_CHAT_ID = '6126141848'
 
 def send_telegram_alert(message):
     global alert_count
@@ -52,9 +52,10 @@ def get_all_token_addresses(conn):
     cursor.execute('SELECT address FROM tokens')
     addresses = [row[0] for row in cursor.fetchall()]
     return addresses
+
 def fetch_token_data_batches(conn):
     """
-    Asynchronously fetches all token addresses from the database every 5 minutes,
+    Fetches all token addresses from the database every 5 minutes,
     splits them into batches of 30, and sends requests to the dexscreener API for each batch.
     """
 
@@ -107,7 +108,9 @@ def fetch_token_data_batches(conn):
                     pair_created_at INTEGER,
                     price_change TEXT,
                     price_usd TEXT,
-                    last_updated TEXT
+                    last_updated TEXT,
+                    description TEXT,
+                    links TEXT
                 )''')
                 alerted_conn.commit()
                 alerted_cursor.execute('SELECT 1 FROM tokens WHERE address = ?', (addr,))
@@ -145,8 +148,68 @@ def fetch_token_data_batches(conn):
                     # Send alert to telegram with name, address, and url
                     name = item['baseToken'].get('name', 'Unknown')
                     url = item.get('url', '')
-                    alert_msg = f"<b>{name}</b>\nAddress: <code>{addr}</code>\nURL: {url}"
+
+                    alert_msg = (
+                        f"🚨 <b>Name: {name}</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━\n"
+                        f"📍 <b>Address:</b>\n"
+                        f"<code>{addr}</code>\n\n"
+                        f"🔗 <b>DexScreener:</b>\n"
+                        f"<a href='{url}'>View Chart</a>"
+                    )
+
+                    # ---- description ----
+                    description = cursor.execute(
+                        'SELECT description FROM tokens WHERE address = ?', 
+                        (addr,)
+                    ).fetchone()
+
+                    if description and description[0]:
+                        alert_msg += f"\n\n📝 <b>Description</b>\n{description[0]}"
+                    else:
+                        alert_msg += f"\n\n📝 <b>Description</b>\n<i>Description is not available</i>"
+
+                    # ---- links ----
+                    website_link = None
+                    twitter_link = None
+
+                    links_row = cursor.execute(
+                        'SELECT links FROM tokens WHERE address = ?', 
+                        (addr,)
+                    ).fetchone()
+
+                    if links_row and links_row[0]:
+                        try:
+                            links = json.loads(links_row[0])
+                            for link in links:
+                                if not website_link and link.get('label') == 'Website':
+                                    website_link = link.get('url')
+                                if not twitter_link and link.get('type') == 'twitter':
+                                    twitter_link = link.get('url')
+                        except json.JSONDecodeError:
+                            pass
+
+                    # ---- Jupiter ----
+                    jupiter_url = f"https://jup.ag/tokens/{addr}"
+
+                    # ---- append links ----
+                    alert_msg += "\n\n🔗 <b>Links</b>"
+                    alert_msg += (
+                        f"\n🌐 <a href='{website_link}'>Website</a>"
+                        if website_link else
+                        "\n🌐 <b>Website:</b> <i>Website is not available</i>"
+                    )
+
+                    alert_msg += (
+                        f"\n🐦 <a href='{twitter_link}'>X</a>"
+                        if twitter_link else
+                        "\n🐦 <i>X link is not available</i>"
+                    )
+
+                    alert_msg += f"\n🪐 <a href='{jupiter_url}'>Jupiter</a>"
+
                     send_telegram_alert(alert_msg)
+
 
                     # Fetch the full row from tokens
                     cursor.execute('SELECT * FROM tokens WHERE address = ?', (addr,))
@@ -163,21 +226,20 @@ def fetch_token_data_batches(conn):
                             pair_created_at INTEGER,
                             price_change TEXT,
                             price_usd TEXT,
-                            last_updated TEXT
+                            last_updated TEXT,
+                            description TEXT,
+                            links TEXT
                         )''')
                         alerted_conn.commit()
                         # Insert into alerted_tokens.db
-                        alerted_cursor.execute('INSERT OR IGNORE INTO tokens (address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', row)
+                        alerted_cursor.execute('INSERT OR IGNORE INTO tokens (address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated, description, links) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', row)
                         alerted_conn.commit()
                         alerted_conn.close()
                         # Remove from main tokens db
                         cursor.execute('DELETE FROM tokens WHERE address = ?', (addr,))
-                        print(f"Moved token {addr} to alerted_tokens.db due to price change alert")
             conn.commit()
-            print(f"Fetched and checked data for batch: {batch}")
         except requests.RequestException as e:
             print(f"Error fetching batch: {batch}\n{e}")
-    print("Waiting 5 minutes before next batch fetch...")
 
 def fetch_and_display_tokens(conn):
     global first_run
@@ -194,6 +256,15 @@ def fetch_and_display_tokens(conn):
             if token.get('chainId') == 'solana' and token.get('tokenAddress', '').endswith(suffixes)
         ]
         
+        # Build profile lookup by token address
+        profile_map = {
+            token.get("tokenAddress"): {
+                "description": token.get("description"),
+                "links": json.dumps(token.get("links")) if token.get("links") else None
+            }
+            for token in data
+        }
+
         # Collect token addresses
         addresses = [token['tokenAddress'] for token in filtered_tokens]
         new_tokens = []
@@ -226,7 +297,9 @@ def fetch_and_display_tokens(conn):
                         pair_created_at INTEGER,
                         price_change TEXT,
                         price_usd TEXT,
-                        last_updated TEXT
+                        last_updated TEXT,
+                        description TEXT,
+                        links TEXT
                     )''')
                     alerted_conn.commit()
                     alerted_cursor.execute('SELECT 1 FROM tokens WHERE address = ?', (addr,))
@@ -236,6 +309,10 @@ def fetch_and_display_tokens(conn):
                         continue
 
                     name = item['baseToken'].get('name', '')
+                    # Pull description & links from profile API
+                    profile = profile_map.get(addr, {})
+                    description = profile.get("description")
+                    links = profile.get("links")
                     url_db = item['url']
                     pair_created_at_raw = item.get('pairCreatedAt')
                     if pair_created_at_raw:
@@ -248,33 +325,24 @@ def fetch_and_display_tokens(conn):
                     price_change_str = json.dumps(price_change) if price_change is not None else None
                     price_usd = item.get('priceUsd')
                     last_updated = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    cursor.execute('INSERT OR IGNORE INTO tokens (address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (addr, name, mc, url_db, pair_created_at, price_change_str, price_usd, last_updated))
+                    cursor.execute(
+                        '''INSERT OR IGNORE INTO tokens 
+                        (address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated, description, links) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                        (
+                            addr,
+                            name,
+                            mc,
+                            url_db,
+                            pair_created_at,
+                            price_change_str,
+                            price_usd,
+                            last_updated,
+                            description,
+                            links
+                        )
+                    )
             conn.commit()
-            
-            # Get newly added tokens
-            # cursor.execute('SELECT address, name, market_cap, url, pair_created_at, price_change, price_usd, last_updated FROM tokens WHERE address NOT IN ({})'.format(','.join('?' for _ in existing_addresses)), list(existing_addresses))
-            # new_tokens = cursor.fetchall()
-        
-        # # Display table of newly added tokens
-        # if new_tokens:
-        #     if first_run:
-        #         print(f"\nLive Token Table - Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        #         print("-" * 240)
-        #         print(f"{'Token Address':<50} {'Name':<20} {'Market Cap':<15} {'URL':<60} {'PairCreatedAt':<15} {'PriceChange':<30} {'PriceUsd':<15} {'LastUpdated'}")
-        #         print("-" * 240)
-        #         first_run = False
-        #     for addr, name, mc, url, pair_created_at, price_change, price_usd, last_updated in new_tokens:
-        #         addr_str = addr[:49]
-        #         name_str = name[:19]
-        #         mc_str = str(mc)[:14]
-        #         url_str = url[:59]
-        #         pair_created_at_str = str(pair_created_at) if pair_created_at is not None else ''
-        #         price_change_str = price_change[:29] + '...' if price_change and len(price_change) > 32 else (price_change or '')
-        #         price_usd_str = price_usd if price_usd is not None else ''
-        #         last_updated_str = last_updated if last_updated is not None else ''
-        #         print(f"{addr_str:<50} {name_str:<20} {mc_str:<15} {url_str:<60} {pair_created_at_str:<15} {price_change_str:<30} {price_usd_str:<15} {last_updated_str}")
-        #     print("-" * 240)
-        
     except requests.RequestException as e:
         print(f"Error fetching data: {e}")
 
@@ -290,7 +358,9 @@ if __name__ == "__main__":
         pair_created_at INTEGER,
         price_change TEXT,
         price_usd TEXT,
-        last_updated TEXT
+        last_updated TEXT,
+        description TEXT,
+        links TEXT
     )''')
     conn.commit()
     
